@@ -378,7 +378,7 @@ dnafx_section dnafx_sections[] = {
 	{ .id = 4, .name = "NS GATE", .size = 10, .max_params = 3,
 		.effects_max = 2, .effects = &dnafx_effect_ns_gate[0] },
 	{ .id = 5, .name = "EQ", .size = 22, .max_params = 6,
-		.effects_max = 4, .effects = &dnafx_effect_eq[0] },
+		.effects_max = 3, .effects = &dnafx_effect_eq[0] },
 	{ .id = 6, .name = "MOD", .size = 18, .max_params = 4,
 		.effects_max = 18, .effects = &dnafx_effect_mod[0] },
 	{ .id = 7, .name = "DELAY", .size = 18, .max_params = 5,
