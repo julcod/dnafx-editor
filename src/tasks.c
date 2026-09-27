@@ -3,8 +3,13 @@
 #include "utils.h"
 #include "debug.h"
 
+#include <unistd.h>
+#include <sys/eventfd.h>
+
 /* Queue of tasks */
 static GAsyncQueue *tasks = NULL;
+/* Event to wake the main loop up when a task is added (e.g., by the API) */
+static int tasks_fd = -1;
 
 /* Stringify task type */
 const char *dnafx_task_type_str(dnafx_task_type type) {
@@ -273,11 +278,29 @@ json_t *dnafx_task_show_help_json(void) {
 
 void dnafx_tasks_init(void) {
 	tasks = g_async_queue_new_full((GDestroyNotify)dnafx_task_free);
+	tasks_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+	if(tasks_fd < 0)
+		DNAFX_LOG(DNAFX_LOG_WARN, "Error creating eventfd: %d (%s)\n", errno, g_strerror(errno));
+}
+
+int dnafx_tasks_fd(void) {
+	return tasks_fd;
+}
+
+void dnafx_tasks_fd_clear(void) {
+	uint64_t count = 0;
+	if(tasks_fd > -1 && read(tasks_fd, &count, sizeof(count)) < 0 && errno != EAGAIN)
+		DNAFX_LOG(DNAFX_LOG_WARN, "Error reading eventfd: %d (%s)\n", errno, g_strerror(errno));
 }
 
 void dnafx_tasks_add(dnafx_task *task) {
-	if(tasks != NULL && task != NULL)
+	if(tasks != NULL && task != NULL) {
 		g_async_queue_push(tasks, task);
+		/* Wake the main loop up, so that the task is handled right away */
+		uint64_t one = 1;
+		if(tasks_fd > -1 && write(tasks_fd, &one, sizeof(one)) < 0)
+			DNAFX_LOG(DNAFX_LOG_WARN, "Error writing to eventfd: %d (%s)\n", errno, g_strerror(errno));
+	}
 }
 
 gboolean dnafx_tasks_is_empty(void) {
@@ -293,4 +316,7 @@ void dnafx_tasks_deinit(void) {
 	if(tasks != NULL)
 		g_async_queue_unref(tasks);
 	tasks = NULL;
+	if(tasks_fd > -1)
+		close(tasks_fd);
+	tasks_fd = -1;
 }
