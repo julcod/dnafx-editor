@@ -801,9 +801,11 @@ static void dnafx_usb_cb(struct libusb_transfer *transfer) {
 				preset = &buf[offset];
 				p = dnafx_preset_from_bytes(preset, DNAFX_PRESET_SIZE);
 				if(p != NULL) {
-					/* Keep track of the preset */
-					if(dnafx_preset_add(p) == 0) {
-						dnafx_preset_set_id(p, p->id);
+					/* Keep track of the preset (replacing the one we may
+					 * have already, e.g., if presets are retrieved again) */
+					if(dnafx_preset_replace(p, p->id) < 0) {
+						dnafx_preset_free(p);
+					} else {
 						/* Check if we need to also save it locally */
 						if(dnafx_presets_folder() != NULL) {
 							/* FIXME */

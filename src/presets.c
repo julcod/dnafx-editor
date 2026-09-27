@@ -463,34 +463,23 @@ int dnafx_preset_add(dnafx_preset *preset) {
 	}
 	char *name = g_strdup(preset->name);
 	if(dnafx_preset_find_byname(name) != NULL) {
-		/* We already have a preset with this name, change it */
-		if(strlen(preset->name) > 12) {
-			/* Too many attempts or name too long to edit */
-			DNAFX_LOG(DNAFX_LOG_ERR, "Error adding preset '%s' to the list\n", name);
-			g_free(name);
-			return -1;
-		}
-		size_t o_len = strlen(name), n_size = o_len + 3, ret = 0;
-		name = g_realloc(name, n_size);
-		char digits[3];
+		/* We already have a preset with this name (the device allows that):
+		 * we track this one with a different key, but we don't rename it,
+		 * or we'd upload a different name to the device later on */
 		int attempts = 1;
 		while(dnafx_preset_find_byname(name) != NULL) {
-			name[o_len] = '\0';
+			g_free(name);
 			attempts++;
-			g_snprintf(digits, sizeof(digits), "%d", attempts);
-			ret = g_strlcat(name, digits, n_size);
-			if(ret >= n_size)
-				DNAFX_LOG(DNAFX_LOG_ERR, "Truncation occurred, %lu >= %lu\n", ret, n_size);
+			name = g_strdup_printf("%s%d", preset->name, attempts);
 		}
-		DNAFX_LOG(DNAFX_LOG_WARN, "We already have a preset named '%s', renaming new preset to '%s'\n",
+		DNAFX_LOG(DNAFX_LOG_VERB, "We already have a preset named '%s', tracking new preset as '%s'\n",
 			preset->name, name);
-		memcpy(preset->name, name, strlen(name));
 	}
 	if(!g_hash_table_insert(presets_byname, name, preset)) {
 		DNAFX_LOG(DNAFX_LOG_ERR, "Error adding preset '%s' to the list\n", name);
-		g_free(name);
 		return -1;
 	}
+	preset->key = name;
 	return 0;
 }
 
@@ -549,7 +538,7 @@ int dnafx_preset_remove(dnafx_preset *preset) {
 		DNAFX_LOG(DNAFX_LOG_ERR, "Invalid arguments\n");
 		return -1;
 	}
-	gboolean done = g_hash_table_remove(presets_byname, preset->name);
+	gboolean done = g_hash_table_remove(presets_byname, preset->key ? preset->key : preset->name);
 	return done ? 0 : -1;
 }
 

@@ -46,6 +46,9 @@ typedef struct dnafx_preset {
 	char name[DNAFX_PRESET_NAME_SIZE+1];
 	dnafx_preset_effect effects[DNAFX_PRESET_EFFECTS];
 	dnafx_preset_expression expressions[DNAFX_PRESET_EXPS];
+	/* Key in the list of presets (different from the name, if there
+	 * are other presets with the same name), owned by the list */
+	const char *key;
 	/* Original bytes, if any (to preserve what we don't parse) */
 	uint8_t raw[DNAFX_PRESET_SIZE];
 	gboolean has_raw;
