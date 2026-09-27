@@ -530,6 +530,13 @@ void dnafx_send_upload_preset(dnafx_task *task) {
 				return;
 			}
 			cur_preset_new = TRUE;
+			/* PHB only has the parameters of the effects in use: take the rest
+			 * (e.g., values of other effects' parameters) from the preset in the slot */
+			dnafx_preset *old = dnafx_preset_find_byid(task->number[0]);
+			if(old != NULL && old->has_raw) {
+				memcpy(cur_preset->raw, old->raw, sizeof(cur_preset->raw));
+				cur_preset->has_raw = TRUE;
+			}
 		} else {
 			cur_preset = dnafx_preset_find_byname(task->text[0]);
 		}
@@ -542,6 +549,9 @@ void dnafx_send_upload_preset(dnafx_task *task) {
 		} else {
 			cur_preset->id = task->number[0];
 			dnafx_preset_to_bytes(cur_preset, cur_preset_bytes, sizeof(cur_preset_bytes));
+			/* These are the bytes the device will have now */
+			memcpy(cur_preset->raw, cur_preset_bytes, sizeof(cur_preset->raw));
+			cur_preset->has_raw = TRUE;
 		}
 	}
 	size_t len = 64;
