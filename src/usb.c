@@ -259,6 +259,19 @@ void dnafx_usb_step(void) {
 					dnafx_usb_task_notify(task, 200, list);
 				}
 				dnafx_usb_task_done(task);
+			} else if(task->type == DNAFX_TASK_LIST_EFFECTS) {
+				json_t *list = dnafx_effects_list();
+				if(task->context == NULL && task->callback == NULL) {
+					/* Just print the results */
+					char *text = json_dumps(list, JSON_INDENT(2) | JSON_PRESERVE_ORDER);
+					DNAFX_LOG(DNAFX_LOG_INFO, "%s\n", text);
+					free(text);
+					json_decref(list);
+				} else {
+					/* Return the list as a JSON object */
+					dnafx_usb_task_notify(task, 200, list);
+				}
+				dnafx_usb_task_done(task);
 			} else if(task->type == DNAFX_TASK_IMPORT_PRESET) {
 				gboolean phb = !strcasecmp(task->text[0], "phb");
 				dnafx_preset *preset = dnafx_preset_import(task->text[1], phb);
@@ -520,10 +533,22 @@ void dnafx_send_upload_preset(dnafx_task *task) {
 			dnafx_preset_free(cur_preset);
 		cur_preset_new = FALSE;
 		if(task->text[1] != NULL) {
-			/* We've been given the PHB content of a new preset */
-			cur_preset = dnafx_preset_from_phb(task->text[1]);
+			/* We've been given the content of a new preset: either PHB
+			 * (JSON), or a binary preset encoded as base64 */
+			const char *content = task->text[1];
+			while(g_ascii_isspace(*content))
+				content++;
+			gboolean phb = (*content == '{');
+			if(phb) {
+				cur_preset = dnafx_preset_from_phb(content);
+			} else {
+				gsize blen = 0;
+				guchar *bytes = g_base64_decode(content, &blen);
+				cur_preset = (blen == DNAFX_PRESET_SIZE) ? dnafx_preset_from_bytes(bytes, blen) : NULL;
+				g_free(bytes);
+			}
 			if(cur_preset == NULL) {
-				DNAFX_LOG(DNAFX_LOG_WARN, "Can't upload preset (invalid PHB)\n");
+				DNAFX_LOG(DNAFX_LOG_WARN, "Can't upload preset (invalid %s)\n", phb ? "PHB" : "binary preset");
 				/* This transaction is over, we're ready for another task */
 				dnafx_usb_task_notify_error(task, 400, "Invalid preset");
 				dnafx_usb_task_done(task);
@@ -533,7 +558,7 @@ void dnafx_send_upload_preset(dnafx_task *task) {
 			/* PHB only has the parameters of the effects in use: take the rest
 			 * (e.g., values of other effects' parameters) from the preset in the slot */
 			dnafx_preset *old = dnafx_preset_find_byid(task->number[0]);
-			if(old != NULL && old->has_raw) {
+			if(phb && old != NULL && old->has_raw) {
 				memcpy(cur_preset->raw, old->raw, sizeof(cur_preset->raw));
 				cur_preset->has_raw = TRUE;
 			}

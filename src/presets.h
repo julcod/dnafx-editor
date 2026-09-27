@@ -82,4 +82,7 @@ int dnafx_preset_remove(dnafx_preset *preset);
 void dnafx_presets_print(void);
 json_t *dnafx_presets_list(void);
 
+/* Listing effects */
+json_t *dnafx_effects_list(void);
+
 #endif
