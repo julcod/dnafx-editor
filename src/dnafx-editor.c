@@ -215,11 +215,21 @@ int main(int argc, char *argv[]) {
 		if(tv.tv_sec == 0 && tv.tv_sec > 0 && (tv.tv_usec/1000) < timeout)
 			timeout = tv.tv_usec/1000;
 		fds_num = 0;
-		/* Track the standard input, for the embedded CLI */
-		fds[fds_num].fd = 0;
-		fds[fds_num].events = POLLIN;
-		fds[fds_num].revents = 0;
-		fds_num++;
+		/* Track the standard input, for the embedded CLI (only if we need
+		 * it, as it may be closed, e.g., when running in the background) */
+		if(options.interactive) {
+			fds[fds_num].fd = 0;
+			fds[fds_num].events = POLLIN;
+			fds[fds_num].revents = 0;
+			fds_num++;
+		}
+		/* Track the event that tells us a new task was added */
+		if(dnafx_tasks_fd() > -1) {
+			fds[fds_num].fd = dnafx_tasks_fd();
+			fds[fds_num].events = POLLIN;
+			fds[fds_num].revents = 0;
+			fds_num++;
+		}
 		/* Track libusb file descriptors */
 		if(usb_fds != NULL) {
 			for(i=0; usb_fds[i] != NULL; i++) {
@@ -244,6 +254,10 @@ int main(int argc, char *argv[]) {
 							fds[i].fd, i, fds[i].revents & POLLERR ? "POLLERR" : "POLLHUP");
 						dnafx_quit();
 					}
+				} else if(fds[i].fd == dnafx_tasks_fd()) {
+					/* A new task was added: we'll handle it in the next iteration */
+					if(fds[i].revents & POLLIN)
+						dnafx_tasks_fd_clear();
 				} else if(fds[i].fd == 0 && fds[i].revents & POLLIN) {
 					/* We have data on stdin, pass it to the CLI */
 					char ch = dnafx_getch();

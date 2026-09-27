@@ -64,6 +64,8 @@ void dnafx_task_show_help(void);
 json_t *dnafx_task_show_help_json(void);
 void dnafx_tasks_init(void);
 void dnafx_tasks_add(dnafx_task *task);
+int dnafx_tasks_fd(void);
+void dnafx_tasks_fd_clear(void);
 gboolean dnafx_tasks_is_empty(void);
 dnafx_task *dnafx_tasks_next(void);
 void dnafx_tasks_deinit(void);
