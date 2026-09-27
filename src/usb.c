@@ -11,6 +11,7 @@
 #define DNAFX_ENDPOINT_IN	(LIBUSB_ENDPOINT_IN | 1)
 #define DNAFX_ENDPOINT_OUT	(LIBUSB_ENDPOINT_OUT | 2)
 #define DNAFX_TIMEOUT		1000
+#define DNAFX_IN_TRANSFERS	8
 #define DNAFX_BUFFER_SIZE	40960
 
 /* Resources */
@@ -28,9 +29,22 @@ static void dnafx_usb_task_done(dnafx_task *task);
 static uint8_t buf[DNAFX_BUFFER_SIZE];
 static size_t buf_size = 0;
 static dnafx_preset *cur_preset = NULL;
+static volatile int halted_endpoint = 0;
+static int presets_in_pending = 0;
+static gboolean presets_in_ending = FALSE;
 static uint8_t cur_preset_bytes[DNAFX_PRESET_SIZE];
 
 /* Helpers */
+static void dnafx_usb_clear_halt(unsigned char endpoint) {
+	int ret = libusb_clear_halt(usb, endpoint);
+	if(ret < 0) {
+		DNAFX_LOG(DNAFX_LOG_WARN, "Error clearing halt on endpoint %02x: %d (%s)\n",
+			endpoint, ret, libusb_strerror(ret));
+	} else {
+		DNAFX_LOG(DNAFX_LOG_VERB, "Cleared halt on endpoint %02x\n", endpoint);
+	}
+}
+
 static const char *libusb_transfer_status_str(enum libusb_transfer_status status) {
 	switch(status) {
 		case LIBUSB_TRANSFER_COMPLETED:
@@ -148,7 +162,9 @@ int dnafx_usb_init(int debug_level) {
 		DNAFX_LOG(DNAFX_LOG_FATAL, "Error claiming interface\n");
 		return -1;
 	}
-	//~ libusb_clear_halt(usb, DNAFX_ENDPOINT_OUT);
+	/* In case a previous session left an endpoint halted */
+	dnafx_usb_clear_halt(DNAFX_ENDPOINT_OUT);
+	dnafx_usb_clear_halt(DNAFX_ENDPOINT_IN);
 
 	return 0;
 }
@@ -177,6 +193,10 @@ void dnafx_usb_step(void) {
 	/* If there isn't any task running, check if we have a task waiting */
 	dnafx_task *task = NULL;
 	if(g_atomic_int_compare_and_exchange(&in_flight, 0, 1)) {
+		if(halted_endpoint && ctx != NULL) {
+			dnafx_usb_clear_halt(halted_endpoint);
+			halted_endpoint = 0;
+		}
 		buf_size = 0;
 		task = dnafx_tasks_next();
 		if(task == NULL) {
@@ -431,11 +451,18 @@ void dnafx_send_change_preset(dnafx_task *task) {
 		return;
 	int preset = task->number[0];
 	DNAFX_LOG(DNAFX_LOG_INFO, "Changing current preset to %d\n", preset);
-	uint8_t *buffer = g_malloc0(10);
+	uint8_t *buffer = g_malloc0(64);
 	size_t len = sizeof(change_preset);
 	memcpy(buffer, change_preset, len);
 	buffer[len] = (uint8_t)preset;
 	len++;
+	/* Add the checksum, as the official editor does */
+	uint16_t crc = dnafx_crc16(buffer + 3, len - 3);
+	buffer[len++] = crc >> 8;
+	buffer[len++] = crc & 0xff;
+	/* Always send a full 64 bytes packet, as all other messages: shorter
+	 * packets confuse the device, which then stalls the next request */
+	len = 64;
 	DNAFX_LOG(DNAFX_LOG_VERB, "Sending preset change message of %zu bytes\n", len);
 	dnafx_print_hex(DNAFX_LOG_HUGE, NULL, buffer, len);
 	/* Send the message */
@@ -566,6 +593,11 @@ static void dnafx_usb_cb(struct libusb_transfer *transfer) {
 	} else {
 		DNAFX_LOG(DNAFX_LOG_WARN, "USB transfer status [%s]: %d (%s)\n", dnafx_task_type_str(what),
 			transfer->status, libusb_transfer_status_str(transfer->status));
+		/* The endpoint is halted: we'll need to clear that before the next
+		 * task, or all following transfers will fail (we can't do it here,
+		 * as it's a synchronous request and we're in a libusb callback) */
+		if(transfer->status == LIBUSB_TRANSFER_STALL)
+			halted_endpoint = transfer->endpoint;
 	}
 	if(what == DNAFX_TASK_INIT_1) {
 		/* First initialization message sent, send the second */
@@ -655,17 +687,28 @@ static void dnafx_usb_cb(struct libusb_transfer *transfer) {
 		/* We sent our request, check if it worked */
 		if(transfer->status == LIBUSB_TRANSFER_COMPLETED) {
 			DNAFX_LOG(DNAFX_LOG_VERB, "  -- Sent %d/%d bytes\n", transfer->actual_length, transfer->length);
-			/* Wait for a response from the device */
-			struct libusb_transfer *gp = libusb_alloc_transfer(0);
-			size_t blen = 64;
-			uint8_t *buffer = g_malloc0(blen);
+			/* Wait for a response from the device: we queue more than one
+			 * transfer, as the device doesn't wait for us, and drops packets
+			 * if there's no transfer pending when it has something to send */
 			task->type = DNAFX_TASK_GET_PRESETS_RESPONSE;
-			libusb_fill_bulk_transfer(gp, usb, DNAFX_ENDPOINT_IN, buffer, blen, dnafx_usb_cb, task, DNAFX_TIMEOUT);
-			int ret = libusb_submit_transfer(gp);
-			if(ret < 0) {
-				DNAFX_LOG(DNAFX_LOG_ERR, "Error submitting presets retrieval transfer: %d (%s)\n", ret, libusb_strerror(ret));
-				g_free(buffer);
-				libusb_free_transfer(gp);
+			presets_in_pending = 0;
+			presets_in_ending = FALSE;
+			int i = 0;
+			for(i=0; i<DNAFX_IN_TRANSFERS; i++) {
+				struct libusb_transfer *gp = libusb_alloc_transfer(0);
+				size_t blen = 64;
+				uint8_t *buffer = g_malloc0(blen);
+				libusb_fill_bulk_transfer(gp, usb, DNAFX_ENDPOINT_IN, buffer, blen, dnafx_usb_cb, task, DNAFX_TIMEOUT);
+				int ret = libusb_submit_transfer(gp);
+				if(ret < 0) {
+					DNAFX_LOG(DNAFX_LOG_ERR, "Error submitting presets retrieval transfer: %d (%s)\n", ret, libusb_strerror(ret));
+					g_free(buffer);
+					libusb_free_transfer(gp);
+					break;
+				}
+				presets_in_pending++;
+			}
+			if(presets_in_pending == 0) {
 				/* This transaction is over, we're ready for another task */
 				dnafx_usb_task_notify_error(task, 500, "libusb error");
 				dnafx_usb_task_done(task);
@@ -690,32 +733,43 @@ static void dnafx_usb_cb(struct libusb_transfer *transfer) {
 					/* Framing prefix, skip */
 					preset += 6;
 					plen -= 6;
+					/* This starts a new preset: if the previous one is
+					 * incomplete (lost packets), drop it, or all the
+					 * presets that follow would be misaligned */
+					if(buf_size % DNAFX_PRESET_SIZE) {
+						DNAFX_LOG(DNAFX_LOG_WARN, "Incomplete preset (%zu/%d bytes), dropping it\n",
+							buf_size % DNAFX_PRESET_SIZE, DNAFX_PRESET_SIZE);
+						buf_size -= buf_size % DNAFX_PRESET_SIZE;
+					}
 				} else if(preset[0] == 0x3f || preset[0] == 0x28) {
 					/* Framing, skip */
 					preset++;
 					plen--;
 				}
-				memcpy(buf + buf_size, preset, plen);
-				buf_size += plen;
+				if(buf_size + plen <= sizeof(buf)) {
+					memcpy(buf + buf_size, preset, plen);
+					buf_size += plen;
+				}
 			}
-			int ret = libusb_submit_transfer(transfer);
-			if(ret < 0) {
+			if(!presets_in_ending) {
+				int ret = libusb_submit_transfer(transfer);
+				if(ret == 0)
+					return;
 				DNAFX_LOG(DNAFX_LOG_ERR, "Error submitting presets retrieval transfer: %d (%s)\n", ret, libusb_strerror(ret));
-				g_free(transfer->buffer);
-				libusb_free_transfer(transfer);
-				/* This transaction is over, we're ready for another task */
-				dnafx_usb_task_notify_error(task, 500, "libusb error");
-				dnafx_usb_task_done(task);
 			}
-			return;
-		} else {
+		}
+		/* A timeout means the device has nothing more to send: wait for
+		 * all the other transfers we queued to be over too, then parse */
+		presets_in_ending = TRUE;
+		presets_in_pending--;
+		if(presets_in_pending == 0) {
 			/* Parse the payload */
 			DNAFX_LOG(DNAFX_LOG_VERB, "Presets (%zu bytes)\n", buf_size);
 			uint8_t *preset = NULL;
 			size_t offset = 0;
 			size_t count = 0;
 			dnafx_preset *p = NULL;
-			while(offset + DNAFX_PRESET_SIZE < buf_size && count < DNAFX_PRESETS_NUM) {
+			while(offset + DNAFX_PRESET_SIZE <= buf_size && count < DNAFX_PRESETS_NUM) {
 				preset = &buf[offset];
 				p = dnafx_preset_from_bytes(preset, DNAFX_PRESET_SIZE);
 				if(p != NULL) {

@@ -126,3 +126,17 @@ int dnafx_write_file(const char *filename, gboolean text, uint8_t *buffer, size_
 	/* Done */
 	return fsize;
 }
+
+/* CRC-16/GSM (poly 0x1021, init 0x0000, xorout 0xffff), which the device
+ * expects at the end of messages, computed on what follows 0xaa 0x55 */
+uint16_t dnafx_crc16(uint8_t *buf, size_t buflen) {
+	uint16_t crc = 0;
+	size_t i = 0;
+	uint8_t j = 0;
+	for(i=0; i<buflen; i++) {
+		crc ^= (uint16_t)buf[i] << 8;
+		for(j=0; j<8; j++)
+			crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : (crc << 1);
+	}
+	return crc ^ 0xffff;
+}
