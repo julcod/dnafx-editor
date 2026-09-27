@@ -11,6 +11,9 @@
 void dnafx_print_hex(int level, const char *separator, uint8_t *buf, size_t buflen);
 void dnafx_trim_string(char *str);
 
+/* Checksums */
+uint16_t dnafx_crc16(uint8_t *buf, size_t buflen);
+
 /* Files and directories */
 int dnafx_mkdir(const char *dir, mode_t mode);
 int dnafx_read_file(const char *filename, gboolean text, uint8_t *buffer, size_t blen);

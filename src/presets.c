@@ -145,12 +145,12 @@ static int dnafx_parse_effect(dnafx_preset *preset, uint8_t index, uint8_t *effe
 	preset->effects[index].active = (value ? TRUE : FALSE);
 	offset += 2;
 	memcpy(&value, effect + offset, 2);
-	preset->effects[index].id = value;
-	dnafx_effect *f = section->effects ? (section->effects + preset->effects[index].id) : NULL;
-	if(f == NULL) {
-		DNAFX_LOG(DNAFX_LOG_ERR, "Unknown effect\n");
+	if(section->effects == NULL || value > section->effects_max) {
+		DNAFX_LOG(DNAFX_LOG_ERR, "Unknown effect in '%s' (%"SCNu16")\n", section->name, value);
 		return -1;
 	}
+	preset->effects[index].id = value;
+	dnafx_effect *f = section->effects + preset->effects[index].id;
 	DNAFX_LOG(DNAFX_LOG_VERB, "  -- -- Effect: %s (%d, %02x%02x)\n", f->name,
 		f->id, *(effect + offset), *(effect + offset + 1));
 	offset += 2;
@@ -244,16 +244,17 @@ dnafx_preset *dnafx_preset_from_phb(const char *phb) {
 				dnafx_sections[i].name);
 			return NULL;
 		}
+		if(json_integer_value(type) < 0 || json_integer_value(type) > dnafx_sections[i].effects_max) {
+			json_decref(json);
+			dnafx_preset_free(preset);
+			DNAFX_LOG(DNAFX_LOG_ERR, "Unknown effect in '%s' (%d)\n",
+				dnafx_sections[i].name, (int)json_integer_value(type));
+			return NULL;
+		}
 		preset->effects[i].type = i;
 		preset->effects[i].id = json_integer_value(type);
 		preset->effects[i].active = json_integer_value(sw) ? TRUE : FALSE;
 		dnafx_effect *f = dnafx_sections[i].effects + preset->effects[i].id;
-		if(f == NULL) {
-			json_decref(json);
-			dnafx_preset_free(preset);
-			DNAFX_LOG(DNAFX_LOG_ERR, "Unknown effect\n");
-			return NULL;
-		}
 		uint8_t j = 0;
 		for(j=0; j<f->params; j++) {
 			json_t *fval = json_object_get(data, f->param_names[j]);
