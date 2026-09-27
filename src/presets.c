@@ -514,6 +514,24 @@ int dnafx_preset_set_id(dnafx_preset *preset, int id) {
 	return 0;
 }
 
+int dnafx_preset_replace(dnafx_preset *preset, int id) {
+	if(presets_byname == NULL || preset == NULL || id < 1 || id > DNAFX_PRESETS_NUM) {
+		DNAFX_LOG(DNAFX_LOG_ERR, "Invalid arguments\n");
+		return -1;
+	}
+	dnafx_preset *old = presets[id-1];
+	if(old != NULL && old != preset) {
+		/* Get rid of the preset that was in this slot (this frees it too),
+		 * so that the new one can reuse its name if it's the same */
+		DNAFX_LOG(DNAFX_LOG_INFO, "Replacing preset '%s' in local slot %d\n", old->name, id);
+		presets[id-1] = NULL;
+		dnafx_preset_remove(old);
+	}
+	if(dnafx_preset_add(preset) < 0)
+		return -1;
+	return dnafx_preset_set_id(preset, id);
+}
+
 int dnafx_preset_remove(dnafx_preset *preset) {
 	if(presets_byname == NULL || preset == NULL || strlen(preset->name) == 0) {
 		DNAFX_LOG(DNAFX_LOG_ERR, "Invalid arguments\n");

@@ -29,6 +29,7 @@ static void dnafx_usb_task_done(dnafx_task *task);
 static uint8_t buf[DNAFX_BUFFER_SIZE];
 static size_t buf_size = 0;
 static dnafx_preset *cur_preset = NULL;
+static gboolean cur_preset_new = FALSE;
 static volatile int halted_endpoint = 0;
 static int presets_in_pending = 0;
 static gboolean presets_in_ending = FALSE;
@@ -514,7 +515,24 @@ void dnafx_send_upload_preset(dnafx_task *task) {
 	if(task == NULL)
 		return;
 	if(task->type == DNAFX_TASK_UPLOAD_PRESET_1) {
-		cur_preset = dnafx_preset_find_byname(task->text[0]);
+		/* Get rid of a new preset left behind by a previous upload that failed */
+		if(cur_preset_new)
+			dnafx_preset_free(cur_preset);
+		cur_preset_new = FALSE;
+		if(task->text[1] != NULL) {
+			/* We've been given the PHB content of a new preset */
+			cur_preset = dnafx_preset_from_phb(task->text[1]);
+			if(cur_preset == NULL) {
+				DNAFX_LOG(DNAFX_LOG_WARN, "Can't upload preset (invalid PHB)\n");
+				/* This transaction is over, we're ready for another task */
+				dnafx_usb_task_notify_error(task, 400, "Invalid preset");
+				dnafx_usb_task_done(task);
+				return;
+			}
+			cur_preset_new = TRUE;
+		} else {
+			cur_preset = dnafx_preset_find_byname(task->text[0]);
+		}
 		if(cur_preset == NULL) {
 			DNAFX_LOG(DNAFX_LOG_WARN, "Can't upload preset named '%s' (no such preset)\n", task->text[0]);
 			/* This transaction is over, we're ready for another task */
@@ -975,8 +993,15 @@ static void dnafx_usb_cb(struct libusb_transfer *transfer) {
 				dnafx_print_hex(DNAFX_LOG_HUGE, NULL, transfer->buffer, transfer->actual_length);
 			}
 			/* Update the local view of presets */
-			dnafx_preset_set_id(cur_preset, cur_preset->id);
-			cur_preset = 0;
+			if(cur_preset_new) {
+				/* New preset: it takes the place of the one that was in the slot */
+				if(dnafx_preset_replace(cur_preset, cur_preset->id) < 0)
+					dnafx_preset_free(cur_preset);
+			} else {
+				dnafx_preset_set_id(cur_preset, cur_preset->id);
+			}
+			cur_preset = NULL;
+			cur_preset_new = FALSE;
 		} else {
 			dnafx_usb_task_notify_error(task, 500, "libusb error");
 		}

@@ -69,6 +69,7 @@ int dnafx_preset_add(dnafx_preset *preset);
 dnafx_preset *dnafx_preset_find_byid(int id);
 dnafx_preset *dnafx_preset_find_byname(const char *name);
 int dnafx_preset_set_id(dnafx_preset *preset, int id);
+int dnafx_preset_replace(dnafx_preset *preset, int id);
 int dnafx_preset_remove(dnafx_preset *preset);
 
 /* Listing presets */
