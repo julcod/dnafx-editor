@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNAfx GiT Editor</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+	<div class="brand">DNAfx GiT <span>editor</span></div>
+	<div class="preset-nav">
+		<button id="prev-preset" class="arrow" title="Preset précédent">&#9664;</button>
+		<input id="preset-name" maxlength="14" spellcheck="false" title="Nom du preset (14 caractères max)" disabled>
+		<button id="next-preset" class="arrow" title="Preset suivant">&#9654;</button>
+	</div>
+	<button id="send" class="icon-button" title="Envoyer au pédalier" disabled>
+		<svg viewBox="0 0 24 24"><path d="M4 3h13l3 3v15H4z M7 3v6h9V3 M7 21v-7h10v7" /></svg>
+	</button>
+	<label class="switch-label" title="Envoie automatiquement chaque modification au pédalier">
+		<span>ENVOI<br>AUTO</span>
+		<input type="checkbox" id="auto-send"><span class="switch"></span>
+	</label>
+	<div class="spacer"></div>
+	<div id="status" class="status offline" title="Connexion à dnafx-editor">Déconnecté</div>
+	<button id="settings-button" class="icon-button" title="Réglages">
+		<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>
+	</button>
+</header>
+
+<div class="layout">
+	<aside class="sidebar">
+		<h2>PRESETS</h2>
+		<h3>PÉDALIER</h3>
+		<ul id="preset-list" class="preset-list"></ul>
+		<div class="list-hint">Glisser : échanger &middot; Ctrl + glisser : copier</div>
+		<h3>CE PRESET</h3>
+		<div class="file-actions">
+			<button id="import-phb" title="Charger un fichier .phb dans le preset affiché (sans l'envoyer)">Importer .phb</button>
+			<button id="export-phb" title="Télécharger le preset affiché en .phb">Exporter .phb</button>
+			<button id="revert" title="Annuler les modifications non envoyées">Annuler modifs</button>
+			<button id="restore-one" title="Remettre ce preset dans sa configuration initiale">Restaurer initial</button>
+			<input type="file" id="phb-file" accept=".phb,.json" hidden>
+		</div>
+		<h3>TOUS LES PRESETS</h3>
+		<div class="file-actions">
+			<button id="export-all" title="Télécharger tous les presets (.phb et .bhb) dans un .zip">Exporter tout</button>
+			<button id="import-all" title="Écrire des presets (.zip, .phb, .bhb) dans le pédalier">Importer…</button>
+			<button id="restore-all" class="wide" title="Remettre tous les presets modifiés dans leur configuration initiale">Restaurer toute la config initiale</button>
+			<input type="file" id="bulk-files" accept=".zip,.phb,.bhb,.json" multiple hidden>
+		</div>
+		<div id="snapshot-info" class="list-hint"></div>
+	</aside>
+
+	<main class="editor">
+		<nav id="chain" class="chain"></nav>
+		<section class="block-panel">
+			<div class="models">
+				<div class="models-header">
+					<span id="block-name">—</span>
+					<label class="switch-label" title="Activer / désactiver le bloc">
+						<input type="checkbox" id="block-switch"><span class="switch"></span>
+					</label>
+				</div>
+				<ul id="model-list" class="model-list"></ul>
+			</div>
+			<div class="params">
+				<div id="model-title" class="model-title">Connecte-toi à dnafx-editor pour commencer</div>
+				<div id="knobs" class="knobs"></div>
+			</div>
+		</section>
+		<div id="log" class="log"></div>
+	</main>
+</div>
+
+<dialog id="settings">
+	<form method="dialog">
+		<h2>Réglages</h2>
+		<label>Adresse du backend (WebSocket)
+			<input id="ws-url" spellcheck="false">
+		</label>
+		<label>Dossier des sauvegardes (côté dnafx-editor)
+			<input id="backup-dir" spellcheck="false">
+		</label>
+		<p class="hint">Avant le premier envoi de chaque preset, sa version présente sur le pédalier est
+		sauvegardée en .bhb dans ce dossier (chemin relatif au dossier où tourne dnafx-editor).
+		Le dossier doit exister. Laisser vide pour ne pas sauvegarder.</p>
+		<p class="hint">Configuration initiale : <span id="snapshot-date">aucune</span><br>
+		<button type="button" id="recapture">Remplacer par l'état actuel du pédalier</button>
+		<button type="button" id="snapshot-files" title="Par exemple les .bhb sauvegardés avec dnafx-editor -s, ou un zip exporté">Charger depuis des fichiers .bhb / .zip</button>
+		<input type="file" id="snapshot-input" accept=".zip,.bhb" multiple hidden></p>
+		<div class="dialog-buttons">
+			<button value="cancel">Annuler</button>
+			<button value="ok" id="settings-ok" class="primary">Enregistrer</button>
+		</div>
+	</form>
+</dialog>
+
+<dialog id="ask">
+	<form method="dialog">
+		<p id="ask-text" class="ask-text"></p>
+		<input id="ask-input" spellcheck="false" hidden>
+		<div class="dialog-buttons">
+			<button value="cancel" formnovalidate>Annuler</button>
+			<button value="ok" id="ask-ok" class="primary">OK</button>
+		</div>
+	</form>
+</dialog>
+
+<dialog id="progress">
+	<h2 id="progress-title"></h2>
+	<progress id="progress-bar" value="0" max="1"></progress>
+	<p id="progress-text" class="hint"></p>
+	<div class="dialog-buttons">
+		<button id="progress-cancel">Arrêter</button>
+	</div>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
