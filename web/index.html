@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNAfx GiT Editor</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+	<div class="brand">DNAfx GiT <span>editor</span></div>
+	<div class="preset-nav">
+		<button id="prev-preset" class="arrow" title="Previous preset">&#9664;</button>
+		<input id="preset-name" maxlength="14" spellcheck="false" title="Preset name (14 characters max)" disabled>
+		<button id="next-preset" class="arrow" title="Next preset">&#9654;</button>
+	</div>
+	<button id="send" class="icon-button" title="Send to the device" disabled>
+		<svg viewBox="0 0 24 24"><path d="M4 3h13l3 3v15H4z M7 3v6h9V3 M7 21v-7h10v7" /></svg>
+	</button>
+	<label class="switch-label" title="Automatically send each change to the device">
+		<span class="two-lines">AUTO SEND</span>
+		<input type="checkbox" id="auto-send"><span class="switch"></span>
+	</label>
+	<div class="spacer"></div>
+	<div id="status" class="status offline" title="Connection to dnafx-editor">Disconnected</div>
+	<button id="settings-button" class="icon-button" title="Settings">
+		<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>
+	</button>
+</header>
+
+<div class="layout">
+	<aside class="sidebar">
+		<h2>PRESETS</h2>
+		<h3>DEVICE</h3>
+		<ul id="preset-list" class="preset-list"></ul>
+		<div class="list-hint">Drag: swap &middot; Ctrl + drag: copy</div>
+		<h3>THIS PRESET</h3>
+		<div class="file-actions">
+			<button id="import-phb" title="Load a .phb file in the preset being edited (without sending it)">Import .phb</button>
+			<button id="export-phb" title="Download the preset being edited as .phb">Export .phb</button>
+			<button id="revert" title="Revert the changes that were not sent">Revert</button>
+			<button id="restore-one" title="Restore this preset to its initial configuration">Restore initial</button>
+			<input type="file" id="phb-file" accept=".phb,.json" hidden>
+		</div>
+		<h3>ALL PRESETS</h3>
+		<div class="file-actions">
+			<button id="export-all" title="Download all presets (.phb and .bhb) in a .zip">Export all</button>
+			<button id="import-all" title="Write presets (.zip, .phb, .bhb) to the device">Import…</button>
+			<button id="restore-all" class="wide" title="Restore all the modified presets to their initial configuration">Restore the whole initial config</button>
+			<input type="file" id="bulk-files" accept=".zip,.phb,.bhb,.json" multiple hidden>
+		</div>
+		<div id="snapshot-info" class="list-hint"></div>
+	</aside>
+
+	<main class="editor">
+		<nav id="chain" class="chain"></nav>
+		<section class="block-panel">
+			<div class="models">
+				<div class="models-header">
+					<span id="block-name">—</span>
+					<label class="switch-label" title="Turn the section on / off">
+						<input type="checkbox" id="block-switch"><span class="switch"></span>
+					</label>
+				</div>
+				<ul id="model-list" class="model-list"></ul>
+			</div>
+			<div class="params">
+				<div id="model-title" class="model-title">Connect to dnafx-editor to start</div>
+				<div id="knobs" class="knobs"></div>
+			</div>
+		</section>
+		<div id="log" class="log"></div>
+	</main>
+</div>
+
+<dialog id="settings">
+	<form method="dialog">
+		<h2>Settings</h2>
+		<label>Backend address (WebSocket)
+			<input id="ws-url" spellcheck="false">
+		</label>
+		<label>Backups folder (on the dnafx-editor side)
+			<input id="backup-dir" spellcheck="false">
+		</label>
+		<p class="hint">Before a preset is overwritten for the first time, the version on the device is
+		saved as .bhb in this folder (relative to the folder dnafx-editor runs in).
+		The folder must exist. Leave empty to disable backups.</p>
+		<p class="hint"><span>Initial configuration:</span> <span id="snapshot-date"></span><br>
+		<button type="button" id="recapture">Replace with the current state of the device</button>
+		<button type="button" id="snapshot-files" title="E.g., the .bhb files saved with dnafx-editor -s, or an exported zip">Load from .bhb / .zip files</button>
+		<input type="file" id="snapshot-input" accept=".zip,.bhb" multiple hidden></p>
+		<div class="dialog-buttons">
+			<button value="cancel">Cancel</button>
+			<button value="ok" id="settings-ok" class="primary">Save</button>
+		</div>
+	</form>
+</dialog>
+
+<dialog id="ask">
+	<form method="dialog">
+		<p id="ask-text" class="ask-text"></p>
+		<input id="ask-input" spellcheck="false" hidden>
+		<div class="dialog-buttons">
+			<button value="cancel" formnovalidate>Cancel</button>
+			<button value="ok" id="ask-ok" class="primary">OK</button>
+		</div>
+	</form>
+</dialog>
+
+<dialog id="progress">
+	<h2 id="progress-title"></h2>
+	<progress id="progress-bar" value="0" max="1"></progress>
+	<p id="progress-text" class="hint"></p>
+	<div class="dialog-buttons">
+		<button id="progress-cancel">Stop</button>
+	</div>
+</dialog>
+
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
