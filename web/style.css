@@ -134,6 +134,7 @@ button:disabled { opacity: .4; cursor: default; }
 	cursor: pointer;
 }
 .switch-label input { display: none; }
+.switch-label .two-lines { width: 36px; }
 .switch {
 	position: relative;
 	width: 32px;

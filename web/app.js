@@ -131,23 +131,23 @@ let ws = null, pending = null, queue = Promise.resolve(), busy = 0;
 
 function connect() {
 	const url = setting("ws") || defaultWsUrl();
-	setStatus("offline", "Connexion…");
+	setStatus("offline", t("Connecting…"));
 	try {
 		ws = new WebSocket(url, "dnafx-protocol");
 	} catch(e) {
-		log("Adresse du backend invalide : " + url, true);
+		log(t("Invalid backend address: {0}", url), true);
 		return;
 	}
 	ws.onopen = () => {
-		setStatus("online", "Connecté");
-		log("Connecté à " + url);
+		setStatus("online", t("Connected"));
+		log(t("Connected to {0}", url));
 		start().catch(e => log(e.message, true));
 	};
 	ws.onclose = () => {
-		setStatus("offline", "Déconnecté");
+		setStatus("offline", t("Disconnected"));
 		if(pending) {
 			clearTimeout(pending.timer);
-			pending.reject(new Error("Connexion perdue"));
+			pending.reject(new Error(t("Connection lost")));
 			pending = null;
 		}
 		setTimeout(connect, 3000);
@@ -170,19 +170,19 @@ function connect() {
 		if(msg.code === 200)
 			p.resolve(msg.payload);
 		else
-			p.reject(new Error((msg.payload && msg.payload.reason) || ("Erreur " + msg.code)));
+			p.reject(new Error((msg.payload && msg.payload.reason) || t("Error {0}", msg.code)));
 	};
 }
 
 function request(name, args) {
 	const run = () => new Promise((resolve, reject) => {
 		if(!ws || ws.readyState !== WebSocket.OPEN)
-			return reject(new Error("Pas connecté à dnafx-editor"));
+			return reject(new Error(t("Not connected to dnafx-editor")));
 		pending = {
 			resolve, reject,
 			timer: setTimeout(() => {
 				pending = null;
-				reject(new Error("Pas de réponse à '" + name + "'"));
+				reject(new Error(t("No response to '{0}'", name)));
 			}, 30000)
 		};
 		ws.send(JSON.stringify({ request: name, arguments: (args || []).map(String) }));
@@ -194,7 +194,7 @@ function request(name, args) {
 	return p.finally(() => {
 		busy--;
 		if(busy === 0 && ws && ws.readyState === WebSocket.OPEN)
-			setStatus("online", "Connecté");
+			setStatus("online", t("Connected"));
 	});
 }
 
@@ -230,7 +230,7 @@ async function refreshPresets() {
 async function selectPreset(slot, hear) {
 	if(slot < 1 || slot > 200 || !state.presets[slot])
 		return;
-	if(isDirty() && !await ask("Le preset affiché a des modifications non envoyées : les abandonner ?", "Abandonner"))
+	if(isDirty() && !await ask(t("The preset has changes that were not sent: discard them?"), t("Discard")))
 		return;
 	const phb = await request("export-preset", [slot, "phb"]);
 	state.slot = slot;
@@ -276,11 +276,10 @@ async function backup(slot) {
 	try {
 		await request("export-preset", [slot, "binary", file]);
 	} catch(e) {
-		throw new Error("Sauvegarde impossible (" + file + ") : " + e.message +
-			". Crée le dossier, ou désactive la sauvegarde dans les réglages.");
+		throw new Error(t("Could not back up the preset ({0}): {1}. Create the folder, or disable backups in the settings.", file, e.message));
 	}
 	state.backedUp.add(slot);
-	log("Sauvegarde de l'ancienne version : " + file);
+	log(t("Previous version backed up: {0}", file));
 }
 
 /* Write a preset (PHB object, or base64 binary) to a slot, after a backup */
@@ -310,9 +309,9 @@ async function send() {
 		}
 		renderPresetList();
 		render();
-		log("Preset " + pad3(slot) + " envoyé (" + Math.round(performance.now() - start) + " ms)");
+		log(t("Preset {0} sent ({1} ms)", pad3(slot), Math.round(performance.now() - start)));
 	} catch(e) {
-		log("Échec de l'envoi : " + e.message, true);
+		log(t("Could not send the preset: {0}", e.message), true);
 		state.sendAgain = false;
 	} finally {
 		state.sending = false;
@@ -437,7 +436,7 @@ function renderChain() {
 		state.effects.forEach((s, i) => {
 			const b = document.createElement("button");
 			b.className = "block";
-			b.title = s.name + " (double-clic : activer / désactiver)";
+			b.title = t("{0} (double click: on / off)", s.name);
 			b.innerHTML = '<span class="led"></span><svg viewBox="0 0 40 34">' + (ICONS[s.name] || "") +
 				'</svg><span class="label">' + s.name + '</span>';
 			b.onclick = () => {
@@ -504,7 +503,7 @@ function createKnob(sectionName, param) {
 			(42 - 36 * Math.cos(a)).toFixed(1) + '" r="2.2"/>';
 	}
 	box.innerHTML = '<div class="name">' + param + (range.unsure ?
-			' <span class="unsure" title="Plage de valeurs à confirmer (' + range.min + '…' + range.max + ')">?</span>' : "") +
+			' <span class="unsure" title="' + t("Range of values to be confirmed ({0}…{1})", range.min, range.max) + '">?</span>' : "") +
 		'</div><svg class="knob" viewBox="0 0 84 84">' + dots +
 		'<circle class="body" cx="42" cy="42" r="26"/><line class="pointer" x1="42" y1="30" x2="42" y2="20"/></svg>' +
 		'<div class="knob-value"><button class="dec">&#9664;</button><span class="value"></span><button class="inc">&#9654;</button></div>';
@@ -561,18 +560,18 @@ function importPhb(file) {
 		try {
 			phb = JSON.parse(reader.result);
 		} catch(e) {
-			return log("Fichier illisible : " + e.message, true);
+			return log(t("Unreadable file: {0}", e.message), true);
 		}
 		if(!phb.effectModule || !phb.fileInfo || !phb.Exp)
-			return log("Ce fichier n'est pas un preset .phb", true);
+			return log(t("This file is not a .phb preset"), true);
 		for(const s of state.effects) {
 			const m = phb.effectModule[s.name];
 			if(!m || !s.effects[m.TYPE])
-				return log("Preset invalide (bloc " + s.name + ")", true);
+				return log(t("Invalid preset ({0} section)", s.name), true);
 		}
 		phb.fileInfo.preset_name = String(phb.fileInfo.preset_name || "").slice(0, 14);
 		state.current = phb;
-		log("Importé : " + file.name + " (pas encore envoyé)");
+		log(t("Imported: {0} (not sent yet)", file.name));
 		changed();
 	};
 	reader.readAsText(file);
@@ -597,17 +596,17 @@ async function runBatch(title, items, fn) {
 		if(stopped)
 			break;
 		$("progress-bar").value = done;
-		$("progress-text").textContent = (done + 1) + " / " + items.length + (item.label ? " : " + item.label : "");
+		$("progress-text").textContent = (done + 1) + " / " + items.length + (item.label ? ": " + item.label : "");
 		try {
 			await fn(item);
 		} catch(e) {
-			failures.push((item.label || "") + " : " + e.message);
+			failures.push((item.label || "") + ": " + e.message);
 		}
 		done++;
 	}
 	dialog.close();
-	const summary = title + " : " + done + " / " + items.length + (stopped ? " (arrêté)" : "") +
-		(failures.length ? ", " + failures.length + " échec(s) : " + failures.join(" ; ") : "");
+	const summary = title + ": " + done + " / " + items.length + (stopped ? t(" (stopped)") : "") +
+		(failures.length ? t(", {0} failure(s): {1}", failures.length, failures.join("; ")) : "");
 	log(summary, failures.length > 0);
 	return { done, stopped, failures };
 }
@@ -624,7 +623,7 @@ async function reloadAll() {
 }
 
 async function checkDirty() {
-	return !isDirty() || await ask("Le preset affiché a des modifications non envoyées : les abandonner ?", "Abandonner");
+	return !isDirty() || await ask(t("The preset has changes that were not sent: discard them?"), t("Discard"));
 }
 
 /* Binary presets, as base64 */
@@ -711,7 +710,7 @@ async function readZip(buffer) {
 	while(eocd >= 0 && view.getUint32(eocd, true) !== 0x06054b50)
 		eocd--;
 	if(eocd < 0)
-		throw new Error("fichier zip invalide");
+		throw new Error(t("invalid zip file"));
 	let p = view.getUint32(eocd + 16, true);
 	const count = view.getUint16(eocd + 10, true);
 	const dec = new TextDecoder();
@@ -752,8 +751,8 @@ function snapshot() {
 
 function renderSnapshotInfo() {
 	const snap = snapshot();
-	const text = snap ? new Date(snap.date).toLocaleString("fr-FR") : "aucune";
-	$("snapshot-info").textContent = "Config initiale : " + text;
+	const text = snap ? new Date(snap.date).toLocaleString(LANG) : t("none");
+	$("snapshot-info").textContent = t("Initial config: {0}", text);
 	$("snapshot-date").textContent = text;
 	$("restore-one").disabled = !snap;
 	$("restore-all").disabled = !snap;
@@ -762,13 +761,13 @@ function renderSnapshotInfo() {
 async function captureSnapshot() {
 	const slots = Object.keys(state.presets).map(Number);
 	if(slots.length !== 200) {
-		log("Configuration initiale non capturée : seulement " + slots.length + " presets lus", true);
+		log(t("Initial configuration not captured: only {0} presets were read", slots.length), true);
 		return;
 	}
 	const snap = { date: new Date().toISOString(), presets: {} };
 	const dir = backupDir() ? backupDir() + "/initial" : null;
 	let fileErrors = 0;
-	const res = await runBatch("Capture de la configuration initiale", slots.map(slot => ({ slot, label: "P" + pad3(slot) })), async ({ slot }) => {
+	const res = await runBatch(t("Capturing the initial configuration"), slots.map(slot => ({ slot, label: "P" + pad3(slot) })), async ({ slot }) => {
 		snap.presets[slot] = { name: state.presets[slot], bin: await getBinary(slot) };
 		/* A copy on disk too (the folder must exist, it's fine if it doesn't) */
 		if(dir && fileErrors === 0)
@@ -779,12 +778,12 @@ async function captureSnapshot() {
 	try {
 		localStorage.setItem("dnafx.initial", JSON.stringify(snap));
 	} catch(e) {
-		log("Impossible d'enregistrer la configuration initiale dans le navigateur : " + e.message, true);
+		log(t("Could not save the initial configuration in the browser: {0}", e.message), true);
 		return;
 	}
 	renderSnapshotInfo();
-	log("Configuration initiale capturée (200 presets)" + (dir && !fileErrors ? ", copie dans " + dir :
-		dir ? " (pas de copie sur disque : crée le dossier " + dir + " pour en avoir une)" : ""));
+	log(t("Initial configuration captured (200 presets)") + (dir && !fileErrors ? t(", copy in {0}", dir) :
+		dir ? t(" (no copy on disk: create the {0} folder to have one)", dir) : ""));
 }
 
 /* Initial configuration from binary presets (e.g., the ones saved with -s) */
@@ -792,13 +791,13 @@ async function snapshotFromFiles(fileList) {
 	const { bySlot } = await readPresetFiles(fileList);
 	const bins = [...bySlot.values()].filter(p => p.bin);
 	if(!bins.length)
-		return log("Aucun preset binaire (.bhb) trouvé : la configuration initiale doit être exacte", true);
+		return log(t("No binary preset (.bhb) found: the initial configuration must be exact"), true);
 	const missing = [];
 	for(let slot = 1; slot <= 200; slot++)
 		if(!bySlot.get(slot)?.bin)
 			missing.push(slot);
-	if(!await ask("Définir la configuration initiale à partir de " + bins.length + " fichier(s) .bhb ?" +
-			(missing.length ? "\nLes " + missing.length + " autres slots prendront l'état actuel du pédalier." : ""), "Définir"))
+	if(!await ask(t("Set the initial configuration from {0} .bhb file(s)?", bins.length) +
+			(missing.length ? "\n" + t("The {0} other slots will take the current state of the device.", missing.length) : ""), t("Set")))
 		return;
 	const snap = { date: new Date().toISOString(), presets: {} };
 	for(const p of bins)
@@ -807,7 +806,7 @@ async function snapshotFromFiles(fileList) {
 		snap.presets[slot] = { name: state.presets[slot], bin: await getBinary(slot) };
 	localStorage.setItem("dnafx.initial", JSON.stringify(snap));
 	renderSnapshotInfo();
-	log("Configuration initiale définie depuis " + bins.length + " fichier(s)");
+	log(t("Initial configuration set from {0} file(s)", bins.length));
 }
 
 async function restoreOne() {
@@ -816,13 +815,13 @@ async function restoreOne() {
 		return;
 	const initial = snap.presets[slot];
 	if(sameBinary(await getBinary(slot), initial.bin))
-		return log("P" + pad3(slot) + " est déjà dans sa configuration initiale");
-	if(!await ask("Remettre P" + pad3(slot) + " « " + state.presets[slot] + " » dans sa configuration initiale (« " + initial.name + " ») ?", "Restaurer"))
+		return log(t("{0} is already in its initial configuration", "P" + pad3(slot)));
+	if(!await ask(t("Restore {0} to its initial configuration ({1})?", "P" + pad3(slot) + " " + quote(state.presets[slot]), quote(initial.name)), t("Restore")))
 		return;
 	await writeSlot(slot, initial.bin);
 	await request("change-preset", [slot]);
 	await reloadAll();
-	log("P" + pad3(slot) + " restauré (« " + initial.name + " »)");
+	log(t("{0} restored ({1})", "P" + pad3(slot), quote(initial.name)));
 }
 
 async function restoreAll() {
@@ -830,17 +829,17 @@ async function restoreAll() {
 	if(!snap || !await checkDirty())
 		return;
 	const changed = [];
-	await runBatch("Comparaison avec la configuration initiale", Object.keys(snap.presets).map(Number).map(slot => ({ slot, label: "P" + pad3(slot) })), async ({ slot }) => {
+	await runBatch(t("Comparing with the initial configuration"), Object.keys(snap.presets).map(Number).map(slot => ({ slot, label: "P" + pad3(slot) })), async ({ slot }) => {
 		if(!sameBinary(await getBinary(slot), snap.presets[slot].bin))
 			changed.push(slot);
 	});
 	if(!changed.length)
-		return log("Tous les presets sont dans leur configuration initiale");
-	if(!await ask(changed.length + " preset(s) différent(s) de la configuration initiale seront restaurés :\n" +
+		return log(t("All presets are in their initial configuration"));
+	if(!await ask(t("{0} preset(s) different from the initial configuration will be restored:", changed.length) + "\n" +
 			changed.slice(0, 15).map(s => "P" + pad3(s) + " " + state.presets[s] + " → " + snap.presets[s].name).join("\n") +
-			(changed.length > 15 ? "\n…" : ""), "Restaurer"))
+			(changed.length > 15 ? "\n…" : ""), t("Restore")))
 		return;
-	await runBatch("Restauration", changed.map(slot => ({ slot, label: "P" + pad3(slot) + " " + snap.presets[slot].name })),
+	await runBatch(t("Restoring"), changed.map(slot => ({ slot, label: "P" + pad3(slot) + " " + snap.presets[slot].name })),
 		({ slot }) => writeSlot(slot, snap.presets[slot].bin));
 	await reloadAll();
 	if(state.slot)
@@ -851,7 +850,7 @@ async function restoreAll() {
 async function exportAll() {
 	const enc = new TextEncoder(), files = [];
 	const slots = Object.keys(state.presets).map(Number);
-	const res = await runBatch("Export des presets", slots.map(slot => ({ slot, label: "P" + pad3(slot) })), async ({ slot }) => {
+	const res = await runBatch(t("Exporting presets"), slots.map(slot => ({ slot, label: "P" + pad3(slot) })), async ({ slot }) => {
 		const name = fileName(slot, state.presets[slot]);
 		const phb = await request("export-preset", [slot, "phb"]);
 		files.push({ name: "phb/" + name + ".phb", data: enc.encode(JSON.stringify(phb, null, "\t")) });
@@ -860,7 +859,7 @@ async function exportAll() {
 	if(res.stopped || !files.length)
 		return;
 	download(makeZip(files), "dnafx-presets-" + timestamp() + ".zip");
-	log(slots.length + " presets exportés (.phb pour l'app officielle, .bhb pour une copie exacte)");
+	log(t("{0} presets exported (.phb for the official editor, .bhb for an exact copy)", slots.length));
 }
 
 /* Read presets from files (.phb, .bhb, or zips of them): the slot comes from
@@ -884,7 +883,7 @@ async function readPresetFiles(fileList) {
 		let content = null, name = null;
 		if(bin) {
 			if(e.data.length !== 184) {
-				errors.push(base + " (taille)");
+				errors.push(base + t(" (size)"));
 				continue;
 			}
 			content = bytesToB64(e.data);
@@ -897,7 +896,7 @@ async function readPresetFiles(fileList) {
 				name = phb.fileInfo.preset_name;
 				content = JSON.stringify(phb);
 			} catch(err) {
-				errors.push(base + " (illisible)");
+				errors.push(base + t(" (unreadable)"));
 				continue;
 			}
 		}
@@ -918,10 +917,10 @@ async function importFiles(fileList) {
 		return;
 	const { bySlot, errors } = await readPresetFiles(fileList);
 	if(!bySlot.size)
-		return log("Aucun preset trouvé" + (errors.length ? " (" + errors.join(", ") + ")" : ""), true);
+		return log(t("No presets found") + (errors.length ? " (" + errors.join(", ") + ")" : ""), true);
 	/* Skip what's already on the device */
 	const todo = [];
-	await runBatch("Comparaison avec le pédalier", [...bySlot.values()].map(p => ({ ...p, label: "P" + pad3(p.slot) })), async p => {
+	await runBatch(t("Comparing with the device"), [...bySlot.values()].map(p => ({ ...p, label: "P" + pad3(p.slot) })), async p => {
 		if(p.bin) {
 			if(!sameBinary(await getBinary(p.slot), p.content))
 				todo.push(p);
@@ -936,12 +935,12 @@ async function importFiles(fileList) {
 	todo.sort((a, b) => a.slot - b.slot);
 	const same = bySlot.size - todo.length;
 	if(!todo.length)
-		return log("Rien à importer : les " + bySlot.size + " presets sont déjà identiques sur le pédalier");
-	if(!await ask(todo.length + " preset(s) vont être écrits dans le pédalier" + (same ? " (" + same + " identique(s) ignoré(s))" : "") + " :\n" +
+		return log(t("Nothing to import: the {0} presets are already the same on the device", bySlot.size));
+	if(!await ask(t("{0} preset(s) will be written to the device", todo.length) + (same ? t(" ({0} identical skipped)", same) : "") + ":\n" +
 			todo.slice(0, 15).map(p => "P" + pad3(p.slot) + " " + (state.presets[p.slot] || "") + " ← " + p.name + " (" + p.file + ")").join("\n") +
-			(todo.length > 15 ? "\n…" : "") + (errors.length ? "\n\nIgnorés : " + errors.join(", ") : ""), "Importer"))
+			(todo.length > 15 ? "\n…" : "") + (errors.length ? "\n\n" + t("Skipped: {0}", errors.join(", ")) : ""), t("Import")))
 		return;
-	await runBatch("Import", todo.map(p => ({ ...p, label: "P" + pad3(p.slot) + " " + p.name })), p => writeSlot(p.slot, p.content));
+	await runBatch(t("Importing"), todo.map(p => ({ ...p, label: "P" + pad3(p.slot) + " " + p.name })), p => writeSlot(p.slot, p.content));
 	await reloadAll();
 	if(state.slot)
 		request("change-preset", [state.slot]).catch(() => {});
@@ -953,22 +952,22 @@ async function movePreset(from, to, copy) {
 		return;
 	if((from === state.slot || to === state.slot) && !await checkDirty())
 		return;
-	const a = "P" + pad3(from) + " « " + state.presets[from] + " »", b = "P" + pad3(to) + " « " + state.presets[to] + " »";
-	if(!await ask(copy ? "Copier " + a + " à la place de " + b + " ?\n(" + b + " sera écrasé, une sauvegarde est faite avant)" :
-			"Échanger " + a + " et " + b + " ?", copy ? "Copier" : "Échanger"))
+	const a = "P" + pad3(from) + " " + quote(state.presets[from]), b = "P" + pad3(to) + " " + quote(state.presets[to]);
+	if(!await ask(copy ? t("Copy {0} over {1}?\n({1} will be overwritten, after a backup)", a, b) :
+			t("Swap {0} and {1}?", a, b), copy ? t("Copy") : t("Swap")))
 		return;
 	const binFrom = await getBinary(from), binTo = await getBinary(to);
 	const items = [{ slot: to, bin: binFrom, label: "P" + pad3(to) }];
 	if(!copy)
 		items.push({ slot: from, bin: binTo, label: "P" + pad3(from) });
-	const res = await runBatch(copy ? "Copie" : "Échange", items, it => writeSlot(it.slot, it.bin));
+	const res = await runBatch(copy ? t("Copying") : t("Swapping"), items, it => writeSlot(it.slot, it.bin));
 	if(res.failures.length)
 		return reloadAll();
 	state.original = null;
 	state.current = null;
 	await refreshPresets();
 	await selectPreset(to);
-	log(copy ? a + " copié en P" + pad3(to) : a + " et " + b + " échangés");
+	log(copy ? t("{0} copied to {1}", a, "P" + pad3(to)) : t("{0} and {1} swapped", a, b));
 }
 
 /* Events */
@@ -1022,7 +1021,7 @@ $("snapshot-input").onchange = e => {
 };
 $("recapture").onclick = async () => {
 	$("settings").close();
-	if(!await ask("Remplacer la configuration initiale par l'état actuel du pédalier ?", "Remplacer"))
+	if(!await ask(t("Replace the initial configuration with the current state of the device?"), t("Replace")))
 		return;
 	captureSnapshot().catch(e => log(e.message, true));
 };
@@ -1036,7 +1035,7 @@ $("revert").onclick = () => {
 	if(state.original) {
 		state.current = clone(state.original);
 		render();
-		log("Modifications annulées");
+		log(t("Changes reverted"));
 	}
 };
 $("settings-button").onclick = () => {
@@ -1065,5 +1064,6 @@ document.body.insertAdjacentHTML("beforeend",
 	'<stop offset="0" stop-color="#5a5c62"/><stop offset=".6" stop-color="#2b2c30"/><stop offset="1" stop-color="#1a1b1e"/>' +
 	'</radialGradient></defs></svg>');
 
+translatePage();
 renderSnapshotInfo();
 connect();

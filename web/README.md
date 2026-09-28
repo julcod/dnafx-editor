@@ -32,6 +32,8 @@ opened as a file): this can be changed in the settings, or with `?ws=...` in the
 
 ## Notes
 
-- The UI is in French for now.
+- The UI is in English, and is translated automatically when the browser uses a language
+  there are translations for (only French, for now: see `i18n.js`). Use `?lang=xx` in the
+  URL to force a language.
 - The ranges of the parameters that don't go from 0 to 100 were guessed from the
   factory presets, and are marked with a `?`: they need checking.
