@@ -5,7 +5,7 @@ This is an open source editor (still experimental and WIP) for the [Harley Bento
 
 * [DNAfx GiT Core](https://harleybenton.com/product/dnafx-git-core/)
 * [DNAfx GiT](https://harleybenton.com/product/dnafx-git/) (untested)
-* [DNAfx GiT Advanced](https://harleybenton.com/product/dnafx-git-advanced/) (untested)
+* [DNAfx GiT Advanced](https://harleybenton.com/product/dnafx-git-advanced/) (tested by a contributor, firmware V1.0.3)
 
 It is **NOT** affiliated with, nor endorsed by, Harley Benton, and is not aimed to compete with or deprecate the official editor. It's very simply an effort that I started because I needed it, and that I'm sharing with the hope that others may find it useful (and hopefully contribute back to the project, should they find ways to extend/enhance it).
 
@@ -35,7 +35,7 @@ The plan, sooner or later, is to come up with a more or less complete editor for
 - [x] Converting between binary and PHB preset formats
 - [x] Uploading custom presets to specific slots on the device
 - [ ] Renaming presets (I have examples from USB captures, but they don't work yet)
-- [ ] Tweaking individual settings in existing presets (active state, effect, values, etc.)
+- [x] Tweaking individual settings in existing presets (active state, effect, values, etc.), via the [web editor](#web-editor)
 - [ ] Uploading custom IR files to use as CAB elements
 - [ ] Interacting with the looper functionality, if possible (@jblackiex is working on that in his repo)
 - [ ] Interacting with the rhythm/tap functionality, if possible
@@ -43,7 +43,7 @@ The plan, sooner or later, is to come up with a more or less complete editor for
 - [x] Interactive console for doing things
 - [x] Support for network protocols for doing things (HTTP, WebSocket)
 - [ ] Support for Bluetooth commands for doing things
-- [ ] Interactive GUI to mimic the official editor functionality (GTK? SDL2?)
+- [x] Interactive GUI to mimic the official editor functionality (a [web editor](#web-editor), for now)
 - [ ] Offline mode for editing presets even without access to the device
 
 # Dependencies
@@ -136,9 +136,29 @@ Whether you're using HTTP or WebSocket, requests must be formatted as JSON objec
 		"arguments": [ // array of strings, arguments to the request ]
 	}
 
-Sending `help` as a request will return info on the supported requests.
+Sending `help` as a request will return info on the supported requests. A few of them are particularly useful to remote clients:
+
+* `list-effects` returns the list of effects (and their parameters) for each section of a preset;
+* `export-preset <number> phb` (or `binary`), without a filename, returns the preset in the response (the binary version as base64);
+* `load-preset <slot> '<content>'` uploads a preset passed in the request, as PHB (JSON) text or as a base64 encoded binary preset, to the specified slot.
+
+Notice that, when using WebSockets, the editor first acknowledges each valid request (`{"code": 200, "payload": {"reason": "Command queued"}}`), and then sends the actual result when the request has been processed.
 
 For an example of how you can leverage the HTTP/WebSocket support to expose other control methodologies, you can check the [MIDI controller](midi/README.md) demo in the `midi` subfolder.
+
+# Web editor
+
+The `web` subfolder contains a web editor for presets, with a UI that tries to look like the official editor: a list of presets, the 9 blocks of the effect chain, and knobs for the settings of each effect. It can also send presets to the device (manually, or automatically after each change), back up presets before overwriting them, import and export presets (one or all of them), restore the initial configuration of the device, and swap or copy presets.
+
+It's a static page with no dependencies, that uses the WebSocket API: start the editor as a backend,
+
+	./dnafx-editor -H 8000
+
+and then open `web/index.html` in a browser. Check the [web editor README](web/README.md) for more details.
+
+# Windows (WSL2)
+
+While the editor only supports Linux, it can be used on Windows as well via [WSL2](https://learn.microsoft.com/windows/wsl/), by sharing the device with the Linux distribution using [usbipd-win](https://github.com/dorssel/usbipd-win) (`usbipd bind --hardware-id 0483:5703` once, as an administrator, and then `usbipd attach --wsl --hardware-id 0483:5703` every time the device is plugged in). Once the editor runs in WSL with `-H 8000`, the web editor can be opened in a Windows browser. Notice that WSL shuts down when nothing runs there, which detaches the device: attach it again right before launching the editor, if that happens.
 
 # Want to help?
 
