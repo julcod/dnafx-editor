@@ -259,6 +259,19 @@ void dnafx_usb_step(void) {
 					dnafx_usb_task_notify(task, 200, list);
 				}
 				dnafx_usb_task_done(task);
+			} else if(task->type == DNAFX_TASK_LIST_EFFECTS) {
+				json_t *list = dnafx_effects_list();
+				if(task->context == NULL && task->callback == NULL) {
+					/* Just print the results */
+					char *text = json_dumps(list, JSON_INDENT(2) | JSON_PRESERVE_ORDER);
+					DNAFX_LOG(DNAFX_LOG_INFO, "%s\n", text);
+					free(text);
+					json_decref(list);
+				} else {
+					/* Return the list as a JSON object */
+					dnafx_usb_task_notify(task, 200, list);
+				}
+				dnafx_usb_task_done(task);
 			} else if(task->type == DNAFX_TASK_IMPORT_PRESET) {
 				gboolean phb = !strcasecmp(task->text[0], "phb");
 				dnafx_preset *preset = dnafx_preset_import(task->text[1], phb);

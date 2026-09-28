@@ -625,3 +625,30 @@ json_t *dnafx_presets_list(void) {
 	json_object_set_new(list, "others", named);
 	return list;
 }
+
+json_t *dnafx_effects_list(void) {
+	json_t *list = json_array();
+	size_t s_size = sizeof(dnafx_sections);
+	size_t num = s_size / sizeof(dnafx_section), i = 0;
+	uint8_t j = 0, k = 0;
+	for(i=0; i<num; i++) {
+		json_t *section = json_object();
+		json_object_set_new(section, "id", json_integer(dnafx_sections[i].id));
+		json_object_set_new(section, "name", json_string(dnafx_sections[i].name));
+		json_t *effects = json_array();
+		for(j=0; j<=dnafx_sections[i].effects_max; j++) {
+			dnafx_effect *f = &dnafx_sections[i].effects[j];
+			json_t *effect = json_object();
+			json_object_set_new(effect, "id", json_integer(f->id));
+			json_object_set_new(effect, "name", json_string(f->name));
+			json_t *params = json_array();
+			for(k=0; k<f->params; k++)
+				json_array_append_new(params, json_string(f->param_names[k]));
+			json_object_set_new(effect, "params", params);
+			json_array_append_new(effects, effect);
+		}
+		json_object_set_new(section, "effects", effects);
+		json_array_append_new(list, section);
+	}
+	return list;
+}

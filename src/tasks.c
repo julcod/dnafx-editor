@@ -56,6 +56,8 @@ const char *dnafx_task_type_str(dnafx_task_type type) {
 			return "interrupt";
 		case DNAFX_TASK_LIST_PRESETS:
 			return "list presets";
+		case DNAFX_TASK_LIST_EFFECTS:
+			return "list effects";
 		case DNAFX_TASK_QUIT:
 			return "quit";
 		case DNAFX_TASK_NONE:
@@ -150,6 +152,8 @@ dnafx_task *dnafx_task_new(int argc, char **argv) {
 		task->type = DNAFX_TASK_INTERRUPT;
 	} else if(!strcasecmp(argv[0], "list-presets")) {
 		task->type = DNAFX_TASK_LIST_PRESETS;
+	} else if(!strcasecmp(argv[0], "list-effects")) {
+		task->type = DNAFX_TASK_LIST_EFFECTS;
 	} else if(!strcasecmp(argv[0], "import-preset")) {
 		if(argc < 3) {
 			DNAFX_LOG(DNAFX_LOG_WARN, "Invalid 'import-preset' format\n");
@@ -244,6 +248,7 @@ static dnafx_task_help help_items[] = {
 	{ .command = "parse-preset", .min_args = 1, .options = "<number>|\"name\"", .summary = "Prints the content of the specified preset" },
 	{ .command = "export-preset", .min_args = 2, .options = "<number>|\"name\" <binary|phb> [\"filename\"]", .summary = "Export the specified preset as a binary of PHB file" },
 	{ .command = "list-presets", .min_args = 0, .options = NULL, .summary = "Prints the list of known presets" },
+	{ .command = "list-effects", .min_args = 0, .options = NULL, .summary = "Prints the list of effects (and their parameters) for each section" },
 	{ .command = "quit", .min_args = 0, .options = NULL, .summary = "Close the editor" },
 };
 
