@@ -524,6 +524,9 @@ void dnafx_send_upload_preset(dnafx_task *task) {
 		} else {
 			cur_preset->id = task->number[0];
 			dnafx_preset_to_bytes(cur_preset, cur_preset_bytes, sizeof(cur_preset_bytes));
+			/* These are the bytes the device will have now */
+			memcpy(cur_preset->raw, cur_preset_bytes, sizeof(cur_preset->raw));
+			cur_preset->has_raw = TRUE;
 		}
 	}
 	size_t len = 64;

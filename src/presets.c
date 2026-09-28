@@ -97,6 +97,11 @@ static int dnafx_parse_expression(dnafx_preset *preset, uint8_t *exp, size_t ele
 dnafx_preset *dnafx_preset_from_bytes(uint8_t *buf, size_t blen) {
 	dnafx_preset *preset = g_malloc0(sizeof(dnafx_preset));
 	DNAFX_LOG(DNAFX_LOG_VERB, "Parsing preset (%zu bytes)\n", blen);
+	/* Keep the original bytes, as we don't parse all of them */
+	if(blen == DNAFX_PRESET_SIZE) {
+		memcpy(preset->raw, buf, blen);
+		preset->has_raw = TRUE;
+	}
 	dnafx_print_hex(DNAFX_LOG_HUGE, NULL, buf, blen);
 	size_t offset = 0;
 	/* Preset ID */
@@ -292,13 +297,19 @@ int dnafx_preset_to_bytes(dnafx_preset *preset, uint8_t *buf, size_t blen) {
 		DNAFX_LOG(DNAFX_LOG_ERR, "Invalid arguments\n");
 		return -1;
 	}
-	/* Serialize the preset to its binary format */
-	memset(buf, 0, blen);
-	/* Write ID and name first */
+	/* Serialize the preset to its binary format: if we have the original
+	 * bytes, start from them, so that we don't lose what we don't parse
+	 * (e.g., the values of parameters the current effects don't use) */
+	if(preset->has_raw)
+		memcpy(buf, preset->raw, blen);
+	else
+		memset(buf, 0, blen);
+	/* Write ID and name first (the device pads names with spaces) */
 	size_t offset = 0;
 	buf[offset] = (uint8_t)preset->id;
 	offset++;
-	memcpy(&buf[offset], preset->name, DNAFX_PRESET_NAME_SIZE);
+	memset(&buf[offset], ' ', DNAFX_PRESET_NAME_SIZE);
+	memcpy(&buf[offset], preset->name, strlen(preset->name));
 	offset += DNAFX_PRESET_NAME_SIZE;
 	/* Effects */
 	uint8_t i = 0, j = 0;
@@ -313,7 +324,8 @@ int dnafx_preset_to_bytes(dnafx_preset *preset, uint8_t *buf, size_t blen) {
 		eoff += 2;
 		memcpy(&ebuf[eoff], &preset->effects[i].id, 2);
 		eoff += 2;
-		for(j=0; j<dnafx_sections[i].max_params; j++) {
+		/* Only write the parameters the effect uses, the others keep their value */
+		for(j=0; j<dnafx_sections[i].effects[preset->effects[i].id].params; j++) {
 			memcpy(&ebuf[eoff], &preset->effects[i].values[j], 2);
 			eoff += 2;
 		}
