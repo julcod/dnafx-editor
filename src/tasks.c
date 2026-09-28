@@ -129,6 +129,23 @@ dnafx_task *dnafx_task_new(int argc, char **argv) {
 			task->number[0] = preset_number;
 			task->text[0] = g_strdup(argv[1]);
 		}
+	} else if(!strcasecmp(argv[0], "load-preset")) {
+		if(argc < 3) {
+			DNAFX_LOG(DNAFX_LOG_WARN, "Invalid 'load-preset' format\n");
+			dnafx_task_free(task);
+			return NULL;
+		}
+		int preset_number = atoi(argv[1]);
+		if(preset_number < 1 || preset_number > DNAFX_PRESETS_NUM) {
+			DNAFX_LOG(DNAFX_LOG_WARN, "Invalid 'load-preset' format\n");
+			dnafx_task_free(task);
+			task = NULL;
+		} else {
+			/* Same as upload-preset, but with the PHB content instead of a name */
+			task->type = DNAFX_TASK_UPLOAD_PRESET_1;
+			task->number[0] = preset_number;
+			task->text[1] = g_strdup(argv[2]);
+		}
 	} else if(!strcasecmp(argv[0], "interrupt")) {
 		task->type = DNAFX_TASK_INTERRUPT;
 	} else if(!strcasecmp(argv[0], "list-presets")) {
@@ -222,6 +239,7 @@ static dnafx_task_help help_items[] = {
 	{ .command = "change-preset", .min_args = 1, .options = "<number>", .summary = "Change the active preset on the device" },
 	{ .command = "rename-preset", .min_args = 2, .options = "<slot> \"<name>\"", .summary = "Rename an existing preset on the device" },
 	{ .command = "upload-preset", .min_args = 2, .options = "\"<name>\" <slot>", .summary = "Upload a named preset to the specified slot on the device" },
+	{ .command = "load-preset", .min_args = 2, .options = "<slot> '<PHB content>'|<base64 binary>", .summary = "Upload a preset, passed as PHB (JSON) text or base64 encoded binary, to the specified slot on the device" },
 	{ .command = "import-preset", .min_args = 2, .options = "<binary|phb> \"filename\"", .summary = "Import the specified binary or PHB preset" },
 	{ .command = "parse-preset", .min_args = 1, .options = "<number>|\"name\"", .summary = "Prints the content of the specified preset" },
 	{ .command = "export-preset", .min_args = 2, .options = "<number>|\"name\" <binary|phb> [\"filename\"]", .summary = "Export the specified preset as a binary of PHB file" },

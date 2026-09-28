@@ -29,6 +29,7 @@ static void dnafx_usb_task_done(dnafx_task *task);
 static uint8_t buf[DNAFX_BUFFER_SIZE];
 static size_t buf_size = 0;
 static dnafx_preset *cur_preset = NULL;
+static gboolean cur_preset_new = FALSE;
 static volatile int halted_endpoint = 0;
 static int presets_in_pending = 0;
 static gboolean presets_in_ending = FALSE;
@@ -514,7 +515,43 @@ void dnafx_send_upload_preset(dnafx_task *task) {
 	if(task == NULL)
 		return;
 	if(task->type == DNAFX_TASK_UPLOAD_PRESET_1) {
-		cur_preset = dnafx_preset_find_byname(task->text[0]);
+		/* Get rid of a new preset left behind by a previous upload that failed */
+		if(cur_preset_new)
+			dnafx_preset_free(cur_preset);
+		cur_preset_new = FALSE;
+		if(task->text[1] != NULL) {
+			/* We've been given the content of a new preset: either PHB
+			 * (JSON), or a binary preset encoded as base64 */
+			const char *content = task->text[1];
+			while(g_ascii_isspace(*content))
+				content++;
+			gboolean phb = (*content == '{');
+			if(phb) {
+				cur_preset = dnafx_preset_from_phb(content);
+			} else {
+				gsize blen = 0;
+				guchar *bytes = g_base64_decode(content, &blen);
+				cur_preset = (blen == DNAFX_PRESET_SIZE) ? dnafx_preset_from_bytes(bytes, blen) : NULL;
+				g_free(bytes);
+			}
+			if(cur_preset == NULL) {
+				DNAFX_LOG(DNAFX_LOG_WARN, "Can't upload preset (invalid %s)\n", phb ? "PHB" : "binary preset");
+				/* This transaction is over, we're ready for another task */
+				dnafx_usb_task_notify_error(task, 400, "Invalid preset");
+				dnafx_usb_task_done(task);
+				return;
+			}
+			cur_preset_new = TRUE;
+			/* PHB only has the parameters of the effects in use: take the rest
+			 * (e.g., values of other effects' parameters) from the preset in the slot */
+			dnafx_preset *old = dnafx_preset_find_byid(task->number[0]);
+			if(phb && old != NULL && old->has_raw) {
+				memcpy(cur_preset->raw, old->raw, sizeof(cur_preset->raw));
+				cur_preset->has_raw = TRUE;
+			}
+		} else {
+			cur_preset = dnafx_preset_find_byname(task->text[0]);
+		}
 		if(cur_preset == NULL) {
 			DNAFX_LOG(DNAFX_LOG_WARN, "Can't upload preset named '%s' (no such preset)\n", task->text[0]);
 			/* This transaction is over, we're ready for another task */
@@ -980,8 +1017,15 @@ static void dnafx_usb_cb(struct libusb_transfer *transfer) {
 				dnafx_print_hex(DNAFX_LOG_HUGE, NULL, transfer->buffer, transfer->actual_length);
 			}
 			/* Update the local view of presets */
-			dnafx_preset_set_id(cur_preset, cur_preset->id);
-			cur_preset = 0;
+			if(cur_preset_new) {
+				/* New preset: it takes the place of the one that was in the slot */
+				if(dnafx_preset_replace(cur_preset, cur_preset->id) < 0)
+					dnafx_preset_free(cur_preset);
+			} else {
+				dnafx_preset_set_id(cur_preset, cur_preset->id);
+			}
+			cur_preset = NULL;
+			cur_preset_new = FALSE;
 		} else {
 			dnafx_usb_task_notify_error(task, 500, "libusb error");
 		}
